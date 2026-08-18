@@ -18,6 +18,7 @@ from keyboards import (
     tasks_menu,
     budgets_menu,
     setup_confirm_menu,
+    item_categories_menu,
     products_menu,
     quantity_menu,
     contact_share_kb,
@@ -237,14 +238,17 @@ async def restart_setup(callback: CallbackQuery, state: FSMContext):
 # ---------- Покупка отдельного товара ----------
 
 
-@router.callback_query(StateFilter(BuyFlow.choose_format), F.data == "buy:item")
-async def start_item(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(StateFilter(ItemFlow.choose_quantity), F.data == "item:back")
+async def item_back(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    category = data.get("category", "mice")
+
     await state.set_state(ItemFlow.choose_product)
 
     await edit_or_answer(
         callback,
         "Выберите устройство.",
-        reply_markup=products_menu(),
+        reply_markup=products_menu(category),
     )
 
     await callback.answer()
@@ -273,14 +277,46 @@ async def choose_product(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.callback_query(StateFilter(ItemFlow.choose_quantity), F.data == "item:back")
-async def item_back(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(StateFilter(BuyFlow.choose_format), F.data == "buy:item")
+async def start_item(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ItemFlow.choose_category)
+
+    await edit_or_answer(
+        callback,
+        "Выберите категорию устройства.",
+        reply_markup=item_categories_menu(),
+    )
+
+    await callback.answer()
+
+
+@router.callback_query(
+    StateFilter(ItemFlow.choose_category),
+    F.data.startswith("item:cat:")
+)
+async def choose_item_category(callback: CallbackQuery, state: FSMContext):
+    category = callback.data.split(":")[-1]
+
+    await state.update_data(category=category)
     await state.set_state(ItemFlow.choose_product)
 
     await edit_or_answer(
         callback,
         "Выберите устройство.",
-        reply_markup=products_menu(),
+        reply_markup=products_menu(category),
+    )
+
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(ItemFlow.choose_product), F.data == "item:cats")
+async def back_to_categories(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ItemFlow.choose_category)
+
+    await edit_or_answer(
+        callback,
+        "Выберите категорию устройства.",
+        reply_markup=item_categories_menu(),
     )
 
     await callback.answer()
