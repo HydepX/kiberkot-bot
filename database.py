@@ -54,7 +54,7 @@ async def init_db() -> None:
             "ALTER TABLE orders ADD COLUMN type TEXT",
             "ALTER TABLE orders ADD COLUMN data_json TEXT",
             "ALTER TABLE orders ADD COLUMN phone_snapshot TEXT",
-            "ALTER TABLE orders ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE orders ADD COLUMN updated_at TIMESTAMP",
         ):
             try:
                 await db.execute(column_sql)
