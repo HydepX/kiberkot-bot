@@ -44,22 +44,17 @@ def digits_only(value: str) -> str:
     return re.sub(r"\D", "", value or "")
 
 
-def get_image_path(kind: str, code: str) -> str | None:
-    """
-    kind: 'products' или 'categories'
-    code: id товара или код категории
-    Возвращает путь, если файл есть, иначе None.
-    """
-    path = os.path.join(MEDIA_DIR, kind, f"{code}.jpg")
-    if os.path.exists(path):
-        return path
-    path_png = path[:-4] + ".png"
-    if os.path.exists(path_png):
-        return path_png
+def get_image_path(kind: str, code: str):
+    """Путь к картинке, если файл существует, иначе None."""
+    base = os.path.join(MEDIA_DIR, kind, code)
+    for ext in (".jpg", ".jpeg", ".png"):
+        path = base + ext
+        if os.path.exists(path):
+            return path
     return None
 
 
-async def edit_or_answer(callback: CallbackQuery, text: str, reply_markup=None, photo_path: str = None, parse_mode: str = None):
+async def edit_or_answer(callback: CallbackQuery, text: str, reply_markup=None, photo_path=None, parse_mode=None):
     if photo_path:
         await callback.message.answer_photo(
             photo=FSInputFile(photo_path),
@@ -123,9 +118,8 @@ async def buy_menu(callback: CallbackQuery, state: FSMContext):
 
     await edit_or_answer(
         callback,
-        text,
-        reply_markup=quantity_menu(product_id),
-        parse_mode="HTML",
+        "Что хотите сделать: подобрать готовый сетап или выбрать отдельное устройство?",
+        reply_markup=buy_format_menu(),
     )
     await callback.answer()
 
@@ -201,30 +195,12 @@ async def choose_budget(callback: CallbackQuery, state: FSMContext):
     await state.set_state(BuyFlow.review_setup)
 
     setup_text = format_setup_text(setup_items)
-    full_text = (
-        "Под ваш запрос подходит следующий сетап:\n\n"
-        f"{setup_text}\n\n"
-        "Оформить заявку на этот сетап?"
-    )
 
-    # Сначала отправляем картинки всех товаров сетапа
-    for product_id in setup_items:
-        img = get_image_path("products", product_id)
-        if img:
-            p = PRODUCTS[product_id]
-            caption = f"{p['emoji']} {p['name']} — {p['short']} ({p['price']} ₽)"
-            try:
-                await callback.message.answer_photo(
-                    photo=FSInputFile(img),
-                    caption=caption,
-                )
-            except Exception as e:
-                logger.error(f"Failed to send product photo {product_id}: {e}")
-
-    # Затем итоговое сообщение с кнопками
     await edit_or_answer(
         callback,
-        full_text,
+        "Под ваш запрос подходит следующий сетап:\n\n"
+        f"{setup_text}\n\n"
+        "Оформить заявку на этот сетап?",
         reply_markup=setup_confirm_menu(),
     )
     await callback.answer()
@@ -308,21 +284,13 @@ async def choose_product(callback: CallbackQuery, state: FSMContext):
         f"💰 Цена: <b>{p['price']} ₽</b>\n\n"
         "Выберите количество."
     )
-    img = get_image_path("products", product_id)
 
-    if img:
-        await callback.message.answer_photo(
-            photo=FSInputFile(img),
-            caption=text,
-            reply_markup=quantity_menu(product_id),
-            parse_mode="HTML",
-        )
-    else:
-        await edit_or_answer(
-            callback,
-            text,
-            reply_markup=quantity_menu(product_id),
-        )
+    await edit_or_answer(
+        callback,
+        text,
+        reply_markup=quantity_menu(product_id),
+        parse_mode="HTML",
+    )
     await callback.answer()
 
 
@@ -364,10 +332,7 @@ async def choose_quantity(callback: CallbackQuery, state: FSMContext):
 
 # ---------- Общая цепочка контактов ----------
 
-@router.message(
-    StateFilter(BuyFlow.waiting_name, ItemFlow.waiting_name),
-    F.text,
-)
+@router.message(StateFilter(BuyFlow.waiting_name, ItemFlow.waiting_name), F.text)
 async def waiting_name(message: Message, state: FSMContext):
     current_state = await state.get_state()
     flow_name = current_state.split(":")[0]
@@ -385,16 +350,12 @@ async def waiting_name(message: Message, state: FSMContext):
     )
 
 
-@router.message(
-    StateFilter(BuyFlow.waiting_phone, ItemFlow.waiting_phone),
-    F.contact,
-)
+@router.message(StateFilter(BuyFlow.waiting_phone, ItemFlow.waiting_phone), F.contact)
 async def waiting_phone_contact(message: Message, state: FSMContext):
     current_state = await state.get_state()
     flow_name = current_state.split(":")[0]
 
     await state.update_data(phone=message.contact.phone_number)
-
     await message.answer("Спасибо, контакт получен.", reply_markup=ReplyKeyboardRemove())
 
     if flow_name == "BuyFlow":
@@ -405,21 +366,12 @@ async def waiting_phone_contact(message: Message, state: FSMContext):
     await message.answer("В каком городе находится получатель?")
 
 
-@router.message(
-    StateFilter(BuyFlow.waiting_phone, ItemFlow.waiting_phone),
-    F.text == "✍️ Ввести вручную",
-)
+@router.message(StateFilter(BuyFlow.waiting_phone, ItemFlow.waiting_phone), F.text == "✍️ Ввести вручную")
 async def waiting_phone_manual_button(message: Message, state: FSMContext):
-    await message.answer(
-        "Введите телефон текстом.",
-        reply_markup=ReplyKeyboardRemove(),
-    )
+    await message.answer("Введите телефон текстом.", reply_markup=ReplyKeyboardRemove())
 
 
-@router.message(
-    StateFilter(BuyFlow.waiting_phone, ItemFlow.waiting_phone),
-    F.text,
-)
+@router.message(StateFilter(BuyFlow.waiting_phone, ItemFlow.waiting_phone), F.text)
 async def waiting_phone_text(message: Message, state: FSMContext):
     current_state = await state.get_state()
     flow_name = current_state.split(":")[0]
@@ -444,10 +396,7 @@ async def waiting_phone_text(message: Message, state: FSMContext):
     await message.answer("В каком городе находится получатель?")
 
 
-@router.message(
-    StateFilter(BuyFlow.waiting_city, ItemFlow.waiting_city),
-    F.text,
-)
+@router.message(StateFilter(BuyFlow.waiting_city, ItemFlow.waiting_city), F.text)
 async def waiting_city(message: Message, state: FSMContext):
     current_state = await state.get_state()
     flow_name = current_state.split(":")[0]
@@ -462,10 +411,7 @@ async def waiting_city(message: Message, state: FSMContext):
     await message.answer("Есть ли комментарий к заказу? Если нет, отправьте «Нет».")
 
 
-@router.message(
-    StateFilter(BuyFlow.waiting_comment, ItemFlow.waiting_comment),
-    F.text,
-)
+@router.message(StateFilter(BuyFlow.waiting_comment, ItemFlow.waiting_comment), F.text)
 async def waiting_comment(message: Message, state: FSMContext):
     current_state = await state.get_state()
     flow_name = current_state.split(":")[0]
