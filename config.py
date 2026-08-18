@@ -11,6 +11,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DB_PATH = os.getenv("DB_PATH", "kiberkot.db")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0") or 0)
 
 
 if not BOT_TOKEN:
