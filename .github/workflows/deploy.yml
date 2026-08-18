@@ -1,0 +1,33 @@
+name: Deploy Kiberkot bot
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Copy files to VPS
+        run: |
+          scp -P ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=accept-new \
+            bot.py requirements.txt deploy.sh \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/kiberkot/
+
+      - name: Run deploy script on VPS
+        run: |
+          ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=accept-new \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "cd /opt/kiberkot && sed -i 's/\r$//' deploy.sh && chmod +x deploy.sh && ./deploy.sh"
