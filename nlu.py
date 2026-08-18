@@ -1,61 +1,130 @@
-import aiohttp
 import logging
-from config import GEMINI_API_KEY
+
+import aiohttp
+
+from config import DASHSCOPE_API_KEY
 
 logger = logging.getLogger(__name__)
 
-# Системный промпт с нашим "датасетом" (Few-Shot Prompting)
 SYSTEM_PROMPT = """
 Ты — строгий классификатор интентов для Telegram-бота магазина игровой периферии Razer.
-Твоя задача: определить намерение пользователя по его сообщению.
+Определи намерение пользователя по его сообщению.
 
-Возможные интенты (возвращай ТОЛЬКО одно из этих слов):
-- buy: Пользователь хочет купить товар, узнать цену, оформить заказ, собрать сетап. (Примеры: "хочу вайпер", "сколько стоит", "оформи заказ", "дай коврик").
-- return: Пользователь хочет вернуть товар, жалуется на брак, просит обмен. (Примеры: "вернуть деньги", "свитчи бракованные", "оформить возврат").
-- question: Пользователь спрашивает про характеристики, совместимость, наличие. (Примеры: "какой вес", "есть ли rgb", "подойдет для кс2").
-- other: Приветствия, флуд, мусор, благодарность, или текст, который не подходит ни под одну категорию. (Примеры: "привет", "спс", "как дела").
+Возможные интенты (верни ТОЛЬКО одно слово):
+- buy: хочет купить, узнать цену, оформить заказ, собрать сетап. Примеры: "хочу вайпер", "сколько стоит", "оформи заказ".
+- return: хочет вернуть, жалуется на брак, просит обмен. Примеры: "вернуть деньги", "свитчи бракованные".
+- question: вопрос о характеристиках, совместимости, наличии. Примеры: "какой вес", "есть ли rgb", "подойдет для кс2".
+- other: приветствие, флуд, благодарность, непонятный текст. Примеры: "привет", "спс", "как дела".
 
-Сообщение пользователя: "{user_text}"
-
-Ответь ТОЛЬКО одним словом (buy, return, question или other) без лишних символов и объяснений.
+Ответь одним словом без лишних символов.
 """
 
-async def classify_intent(text: str) -> str:
-    """
-    Отправляет текст в Gemini 1.5 Flash и возвращает распознанный интент.
-    """
-    if not text or len(text.strip()) < 2:
-        return "other"
+# ---------- Локальный fallback ----------
 
-    prompt = SYSTEM_PROMPT.format(user_text=text)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={GEMINI_API_KEY}"
-    
+RETURN_WORDS = (
+    "верн", "возврат", "брак", "сломал", "не работает",
+    "обмен", "дефект", "отдать обратно",
+)
+QUESTION_WORDS = (
+    "какой", "какая", "какие", "вес", "rgb", "подойдет",
+    "совмест", "характеристик", "есть ли", "поддерж",
+    "весит", "для кс", "для дот", "для валор",
+)
+BUY_WORDS = (
+    "куп", "заказ", "цена", "стоит", "сетап", "собери",
+    "подбери", "хочу", "дай", "нужен", "нужна", "нужно", "оформи",
+)
+
+
+def classify_local(text: str) -> str:
+    t = text.lower()
+    if any(w in t for w in RETURN_WORDS):
+        return "return"
+    if any(w in t for w in QUESTION_WORDS):
+        return "question"
+    if any(w in t for w in BUY_WORDS):
+        return "buy"
+    return "other"
+
+
+# ---------- Qwen через DashScope (OpenAI-compatible) ----------
+
+async def classify_qwen(text: str) -> str:
+    """
+    Пробует распознать через Qwen.
+    Возвращает интент или None, если API недоступен.
+    """
+    if not DASHSCOPE_API_KEY:
+        logger.warning("DASHSCOPE_API_KEY not set")
+        return None
+
+    url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {DASHSCOPE_API_KEY}",
+        "Content-Type": "application/json",
+    }
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.1, # Минимальная креативность, нам нужна точность
-            "maxOutputTokens": 10
-        }
+        "model": "qwen-plus",
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": text},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 10,
     }
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    # Достаем текст ответа из структуры JSON Gemini
-                    intent = data['candidates'][0]['content']['parts'][0]['text'].strip().lower()
-                    
-                    # Защита от галлюцинаций (если нейросеть вдруг ответит чем-то странным)
-                    if intent in ["buy", "return", "question", "other"]:
-                        return intent
-                    else:
-                        logger.warning(f"Gemini returned unexpected intent: {intent}")
-                        return "other"
-                else:
-                    logger.error(f"Gemini API error: {resp.status} - {await resp.text()}")
-                    return "other" # В случае ошибки API не ломаем бота, считаем это 'other'
-                    
+            async with session.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    logger.error(f"Qwen API error: {resp.status} - {body}")
+                    return None
+
+                data = await resp.json()
+                content = (
+                    data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                    .strip()
+                    .lower()
+                )
+
+                # Вытаскиваем первое слово — на случай если модель болтливая
+                first_word = content.split()[0] if content else ""
+                # Убираем возможные точки/запятые
+                first_word = first_word.strip(".,;:!?\n\t ")
+
+                if first_word in ("buy", "return", "question", "other"):
+                    return first_word
+
+                logger.warning(f"Qwen returned unexpected: {content!r}")
+                return None
+
     except Exception as e:
-        logger.error(f"Exception in NLU: {e}")
+        logger.error(f"Exception in Qwen call: {e}")
+        return None
+
+
+# ---------- Основной вход ----------
+
+async def classify_intent(text: str) -> str:
+    """
+    Пытается Qwen, при неудаче — локальный классификатор.
+    """
+    if not text or len(text.strip()) < 2:
         return "other"
+
+    intent = await classify_qwen(text)
+    if intent is not None:
+        logger.info(f"Qwen resolved: '{text}' -> {intent}")
+        return intent
+
+    intent = classify_local(text)
+    logger.info(f"Local fallback: '{text}' -> {intent}")
+    return intent
