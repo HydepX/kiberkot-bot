@@ -19,6 +19,10 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KEY_B64 }}" | tr -d '[:space:]' | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+      
+      - name: Verify SSH key
+        run: |
+          ssh-keygen -y -f ~/.ssh/id_ed25519 && echo "KEY OK"
 
       - name: Pack project
         run: |
