@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher
 
 from config import BOT_TOKEN, DB_PATH
 from db import init_db
+from database import init_db as init_db_v2
 from storage import SQLiteStorage
 from handlers import all_routers
 
@@ -12,10 +13,11 @@ from handlers import all_routers
 async def main():
     logging.basicConfig(level=logging.INFO)
 
-    # Создаём таблицы заказов.
+    # Старые таблицы (заявки Блока 2)
     await init_db()
+    # Фундамент Блока 4: users, messages, handovers + новые колонки orders
+    await init_db_v2()
 
-    # Создаём и инициализируем SQLite FSM storage.
     storage = SQLiteStorage(DB_PATH)
     await storage.init()
 
