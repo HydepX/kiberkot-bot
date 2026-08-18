@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
-from catalog import GAMES, TASKS, BUDGETS, PRODUCTS
+from catalog import GAMES, TASKS, BUDGETS, PRODUCTS, CATEGORIES
 
 
 def main_menu() -> InlineKeyboardMarkup:
@@ -17,6 +17,18 @@ def buy_format_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🎯 Подобрать сетап", callback_data="buy:setup")
     builder.button(text="📦 Купить отдельный девайс", callback_data="buy:item")
+    builder.button(text="🔙 Главное меню", callback_data="nav:main")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def item_categories_menu() -> InlineKeyboardMarkup:
+    """Категории для покупки отдельного девайса."""
+    builder = InlineKeyboardBuilder()
+
+    for code, title in CATEGORIES.items():
+        builder.button(text=title, callback_data=f"item:cat:{code}")
+
     builder.button(text="🔙 Главное меню", callback_data="nav:main")
     builder.adjust(1)
     return builder.as_markup()
@@ -61,14 +73,17 @@ def setup_confirm_menu() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def products_menu() -> InlineKeyboardMarkup:
+def products_menu(category: str = None) -> InlineKeyboardMarkup:
+    """Товары категории. Если category=None — все товары (старое поведение)."""
     builder = InlineKeyboardBuilder()
 
     for product_id, product in PRODUCTS.items():
+        if category and product["cat"] != category:
+            continue
         text = f"{product['emoji']} {product['name']}"
         builder.button(text=text, callback_data=f"item:product:{product_id}")
 
-    builder.button(text="🔙 Главное меню", callback_data="nav:main")
+    builder.button(text="🔙 Назад к категориям", callback_data="item:cats")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -112,10 +127,6 @@ def faq_menu(product_id: str) -> InlineKeyboardMarkup:
 
 
 def contact_share_kb() -> ReplyKeyboardMarkup:
-    """
-    Временная reply-клавиатура только для шага телефона.
-    Нужна для кнопки 'Поделиться контактом'.
-    """
     builder = ReplyKeyboardBuilder()
     builder.button(text="📱 Поделиться контактом", request_contact=True)
     builder.button(text="✍️ Ввести вручную")
