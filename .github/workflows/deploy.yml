@@ -17,17 +17,21 @@ jobs:
       - name: Prepare SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.SSH_KEY_B64 }}" | tr -d '[:space:]' | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
-      - name: Copy files to VPS
+      - name: Pack project
+        run: |
+          tar --exclude=.git --exclude=.github -czf /tmp/project.tar.gz .
+
+      - name: Copy archive to VPS
         run: |
           scp -P ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=accept-new \
-            bot.py requirements.txt deploy.sh \
+            /tmp/project.tar.gz \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/kiberkot/
 
-      - name: Run deploy script on VPS
+      - name: Extract and deploy
         run: |
           ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=accept-new \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "cd /opt/kiberkot && sed -i 's/\r$//' deploy.sh && chmod +x deploy.sh && ./deploy.sh"
+            "cd /opt/kiberkot && tar -xzf project.tar.gz && rm project.tar.gz && sed -i 's/\r$//' deploy.sh && chmod +x deploy.sh && ./deploy.sh"
