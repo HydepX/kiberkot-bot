@@ -28,7 +28,7 @@ async def classify_intent(text: str) -> str:
         return "other"
 
     prompt = SYSTEM_PROMPT.format(user_text=text)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={GEMINI_API_KEY}"
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
