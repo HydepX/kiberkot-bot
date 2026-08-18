@@ -1,4 +1,5 @@
 import json
+import logging
 from html import escape
 
 from aiogram import Router, F, Bot
@@ -12,7 +13,9 @@ from aiogram.types import (
 
 from config import ADMIN_ID
 from database import get_all_orders, get_order_by_id
-from services.order_service import ORDER_TYPES, process_new_order
+from services.order_service import ORDER_TYPES, process_new_order, process_admin_action
+
+logger = logging.getLogger(__name__)
 
 router = Router(name="admin")
 
@@ -45,7 +48,7 @@ async def render_orders(message: Message):
     keyboard = []
 
     for order in orders:
-        o_id, user_id, o_type, status, data_json, created_at = order
+        o_id, user_id, o_type, status, data_json, phone, created_at = order
         type_icon = ORDER_TYPES.get(o_type, "📦")
         s_icon = STATUS_ICONS.get(status, "⚪️")
 
@@ -80,7 +83,6 @@ async def cmd_orders(message: Message):
 
 @router.message(Command("testorder"))
 async def cmd_testorder(message: Message, bot: Bot):
-    """Тестовая заявка, чтобы сразу проверить уведомления."""
     if not is_admin(message.from_user.id):
         return await message.answer("⛔️ У вас нет прав администратора.")
 
@@ -106,13 +108,14 @@ async def process_admin_view(callback: CallbackQuery):
     if not order:
         return await callback.answer("Заявка не найдена", show_alert=True)
 
-    o_id, user_id, o_type, status, data_json, created_at = order
+    o_id, user_id, o_type, status, data_json, phone, created_at = order
 
     text = (
         f"📋 <b>Заявка #{order_id}</b>\n"
         f"👤 ID клиента: <code>{user_id}</code>\n"
         f"📦 Тип: {ORDER_TYPES.get(o_type, o_type)}\n"
         f"📊 Статус: {status}\n"
+        f"📞 Телефон: {escape(phone or 'не указан')}\n"
         f"🕒 Дата: {created_at}\n\n"
         f"📝 <b>Детали:</b>\n"
     )
@@ -143,7 +146,9 @@ async def process_admin_actions(callback: CallbackQuery, bot: Bot):
     if not is_admin(callback.from_user.id):
         return await callback.answer("⛔️ Нет прав", show_alert=True)
 
-    from services.order_service import process_admin_action
-
-    await process_admin_action(bot, callback)
-    await callback.answer("Статус обновлен!")
+    try:
+        await process_admin_action(bot, callback)
+        await callback.answer("Статус обновлен!")
+    except Exception as e:
+        logger.exception("Admin action failed")
+        await callback.answer(f"Ошибка: {e}", show_alert=True)
