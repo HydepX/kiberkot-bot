@@ -39,11 +39,26 @@ class SQLiteStorage(BaseStorage):
 
         return ":".join(parts)
 
-    async def set_state(self, key: StorageKey, state: Optional[str]) -> None:
+    @staticmethod
+    def _serialize_state(state: Any) -> Optional[str]:
+        """
+        Превращает то, что пришло как state (str, State, StatesGroup),
+        в строку или None. SQLite умеет хранить только строки.
+        """
+        if state is None:
+            return None
+        if isinstance(state, str):
+            return state
+        if hasattr(state, "state"):
+            return state.state
+        return str(state)
+
+    async def set_state(self, key: StorageKey, state: Optional[str] = None) -> None:
         serialized_key = self._serialize_key(key)
+        state_str = self._serialize_state(state)
 
         async with aiosqlite.connect(self.db_path) as db:
-            if state is None:
+            if state_str is None:
                 await db.execute(
                     "DELETE FROM fsm_states WHERE key = ?",
                     (serialized_key,),
@@ -55,7 +70,7 @@ class SQLiteStorage(BaseStorage):
                     VALUES (?, ?, '{}')
                     ON CONFLICT(key) DO UPDATE SET state = excluded.state
                     """,
-                    (serialized_key, state),
+                    (serialized_key, state_str),
                 )
 
             await db.commit()
