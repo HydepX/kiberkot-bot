@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 ORDER_TYPES = {
     "buy": "🛒 Покупка",
+    "setup": "🎯 Подбор сетапа",
+    "item": "📦 Отдельный девайс",
     "return": "🔄 Возврат",
     "question": "❓ Вопрос",
     "handover": "🆘 Связь с менеджером",
