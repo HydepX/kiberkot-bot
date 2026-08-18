@@ -137,20 +137,35 @@ async def get_all_orders(limit=10, offset=0, status=None):
 
         async with db.execute(query, params) as cursor:
             return await cursor.fetchall()
-async def get_user_by_tg_id(tg_id: int):
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT id, tg_id, username, phone, created_at FROM users WHERE tg_id = ?",
-            (tg_id,),
-        ) as cursor:
-            return await cursor.fetchone()
-
 
 async def get_order_by_id(order_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT id, user_id, type, status, data_json, created_at "
-            "FROM orders WHERE id = ?",
+            """
+            SELECT id, user_id, COALESCE(type, order_type), status,
+                   COALESCE(data_json, payload), COALESCE(phone_snapshot, phone),
+                   created_at
+            FROM orders WHERE id = ?
+            """,
             (order_id,),
         ) as cursor:
             return await cursor.fetchone()
+
+
+async def get_all_orders(limit=10, offset=0, status=None):
+    async with aiosqlite.connect(DB_PATH) as db:
+        query = """
+            SELECT id, user_id, COALESCE(type, order_type), status,
+                   COALESCE(data_json, payload), COALESCE(phone_snapshot, phone),
+                   created_at
+            FROM orders
+        """
+        params = []
+        if status:
+            query += " WHERE status = ?"
+            params.append(status)
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        async with db.execute(query, params) as cursor:
+            return await cursor.fetchall()
