@@ -59,18 +59,19 @@ def get_image_path(kind: str, code: str) -> str | None:
     return None
 
 
-async def edit_or_answer(callback: CallbackQuery, text: str, reply_markup=None, photo_path: str = None):
+async def edit_or_answer(callback: CallbackQuery, text: str, reply_markup=None, photo_path: str = None, parse_mode: str = None):
     if photo_path:
         await callback.message.answer_photo(
             photo=FSInputFile(photo_path),
             caption=text,
             reply_markup=reply_markup,
+            parse_mode=parse_mode,
         )
         return
     try:
-        await callback.message.edit_text(text, reply_markup=reply_markup)
+        await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
     except Exception:
-        await callback.message.answer(text, reply_markup=reply_markup)
+        await callback.message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
 
 
 async def finalize_order(message: Message, state: FSMContext, order_type: str):
@@ -122,8 +123,9 @@ async def buy_menu(callback: CallbackQuery, state: FSMContext):
 
     await edit_or_answer(
         callback,
-        "Что хотите сделать: подобрать готовый сетап или выбрать отдельное устройство?",
-        reply_markup=buy_format_menu(),
+        text,
+        reply_markup=quantity_menu(product_id),
+        parse_mode="HTML",
     )
     await callback.answer()
 
